@@ -17,7 +17,7 @@ SEQUENCE_NUMBER = 0
 
 USER_NAME = "Client"
 
-
+PREV_PACKET = 0
 
 unpacker = struct.Struct(f'I I {MAX_STRING_SIZE}s 32s')
 packer = struct.Struct(f'I I {MAX_STRING_SIZE}s')
@@ -85,6 +85,9 @@ def main():
                 
                 # send msg to server
                 sock.sendto(UDP_packet, (UDP_IP, UDP_PORT))
+                PREV_PACKET = UDP_packet
+
+                # set blocking to true (so program waits for response) and set a timeout for 1 second
 
                 # wait for ack0 or 1 - depends on sequence number
 
