@@ -23,6 +23,14 @@ unpacker = struct.Struct(f'I I {MAX_STRING_SIZE}s 32s')
 packer = struct.Struct(f'I I {MAX_STRING_SIZE}s')
 
 
+
+def flip_sequence_number():
+    if(SEQUENCE_NUMBER==0):
+        SEQUENCE_NUMBER=1
+    if(SEQUENCE_NUMBER==1):
+        SEQUENCE_NUMBER=0
+
+
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
     sock.bind(('', 0))
@@ -77,6 +85,13 @@ def main():
                 
                 # send msg to server
                 sock.sendto(UDP_packet, (UDP_IP, UDP_PORT))
+
+                # wait for ack0 or 1 - depends on sequence number
+
+                # if proper ack received then flip seq num
+                #flip sequence number
+                
+                
 
 if __name__ == '__main__':
     main()
