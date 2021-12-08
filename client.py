@@ -25,6 +25,7 @@ packer = struct.Struct(f'I I {MAX_STRING_SIZE}s')
 
 
 def flip_sequence_number():
+    global SEQUENCE_NUMBER
     if(SEQUENCE_NUMBER==0):
         SEQUENCE_NUMBER=1
     if(SEQUENCE_NUMBER==1):

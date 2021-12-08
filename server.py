@@ -16,19 +16,25 @@ UDP_PORT = 54321
 STREAM_BUFFER_SIZE =1024
 MAX_STRING_SIZE = 256
 
+EXPECTED_SEQ = 0
 
+RECV_SEQ = 0
+RECV_SIZE = 0
+RECV_DATA = 0
+RECV_CHECKSUM = 0
+RECV_TEXT = 0
 
 sel = selectors.DefaultSelector()
 client_list = []
 client_count = 0
 
 
-
 unpacker = struct.Struct(f'I I {MAX_STRING_SIZE}s 32s')
 packer = struct.Struct(f'I I {MAX_STRING_SIZE}s')
 
 
-
+# todo 
+# get_packet() use SEQ_NUM to check if packet is not dupicate
 
 ## Functions ##
 
@@ -42,10 +48,14 @@ def extract_packet_fields(UDP_packet):
     # extract text from RECV_DATA
     RECV_TEXT = RECV_DATA[:RECV_SIZE].decode()
 
+def is_duplicate():
+    global EXPECTED_SEQ, RECV_SEQ
+    if(EXPECTED_SEQ==RECV_SEQ):
+         return False
+    else:
+         return True
 
-def is_corrupt(UDP_packet):
-    extract_packet_fields(UDP_packet)
-    
+def is_corrupt():
     # Calculate and confirm checksum
     values = (RECV_SEQ,RECV_SIZE,RECV_DATA)
     packed_data = packer.pack(*values)
@@ -56,20 +66,37 @@ def is_corrupt(UDP_packet):
     else:
         return True
         
-
+def flip_expected_seq():
+    global EXPECTED_SEQ
+    
+    if EXPECTED_SEQ == 0:
+        EXPECTED_SEQ = 1
+    else:
+        EXPECTED_SEQ = 0
 
 def get_packet(sock, mask):
     # Receive and unpack the packet
     received_packet, addr = sock.recvfrom(STREAM_BUFFER_SIZE)
     UDP_packet = unpacker.unpack(received_packet)
+    
+    # extract packet fields
+    extract_packet_fields(UDP_packet)
 
-    if is_corrupt(UDP_packet) == False:
+    # Packet received is not corrupt or duplicate
+    if is_corrupt() == False and is_duplicate()==False:
         print('Received and computed checksums match, so packet can be processed')
         print(f'Message text was:  {RECV_TEXT}')
+        # flip expected sequence number 
+        flip_expected_seq()
+        print(f"\nExpecting Seq Num: {EXPECTED_SEQ}")
         # send ACK to client (positive acknowledgement)
     else:
-        print('Received and computed checksums do not match, so packet is corrupt and discarded')
-        # send NAK to client (negative acknowledgement)
+        if is_corrupt() == True:
+            print('\nReceived and computed checksums do not match, so packet is corrupt and discarded\n')
+            # send NAK to client (negative acknowledgement)
+        if is_duplicate() == True:
+            print("\nDuplicate Packet!!\n")
+            print(f"\nExpected Sequence Number: {EXPECTED_SEQ}\nSequence Number we got: {RECV_SEQ}")
 
     print(f"\nConnection from: {addr}")
 
@@ -80,6 +107,7 @@ def get_packet(sock, mask):
 
 def main():
     global server_sock
+    
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
     server_sock.bind((UDP_IP, UDP_PORT))
     server_sock.setblocking(False)
