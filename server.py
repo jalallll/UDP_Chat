@@ -8,9 +8,13 @@ import errno
 import re
 import sys
 
-# IP and Port of server
-UDP_IP = "localhost"
-UDP_PORT = 54321
+#todo
+# if server receives non corrupt packet & correct seq num -> send ack to client and set timer 
+# if server receives corrupt packet or wrong seq num -> send nak to client 
+## sender must retransmit corrupt packet upon receiving nak from server
+
+
+
 
 # Buffer size
 STREAM_BUFFER_SIZE =1024
@@ -85,20 +89,26 @@ def get_packet(sock, mask):
 
     # Packet received is not corrupt or duplicate
     if is_corrupt() == False and is_duplicate()==False:
-        print('Received and computed checksums match, so packet can be processed')
-        print(f'Message text was:  {RECV_TEXT}')
-        print(f"\Initial Seq Num: {EXPECTED_SEQ}")
+        print("\n - - - - - -")
+        print(f'{RECV_TEXT}')
+        print(f"\nSeq Num We got: {EXPECTED_SEQ}")
         # flip expected sequence number 
         flip_expected_seq()
-        print(f"\nExpecting Seq Num: {EXPECTED_SEQ}")
+        print(f"\nNext Expecting Seq Num: {EXPECTED_SEQ}")
+        print("\n - - - - - -\n")
         # send ACK to client (positive acknowledgement)
     else:
         if is_corrupt() == True:
-            print('\nReceived and computed checksums do not match, so packet is corrupt and discarded\n')
+            print("\n # # # # # #")
+            print('\nChecksums DO NOT MATCH!\n')
+            print("\n # # # # # #\n")
+
             # send NAK to client (negative acknowledgement)
         if is_duplicate() == True:
+            print("\n # # # # # #")
             print("\nDuplicate Packet!!\n")
             print(f"\nExpected Sequence Number: {EXPECTED_SEQ}\nSequence Number we got: {RECV_SEQ}")
+            print("\n # # # # # #\n")
 
     print(f"\nConnection from: {addr}")
 
@@ -111,9 +121,11 @@ def main():
     global server_sock
     
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-    server_sock.bind((UDP_IP, UDP_PORT))
+    server_sock.bind(('', 0))
+    HOST = server_sock.getsockname()[0]
+    PORT = server_sock.getsockname()[1]
     server_sock.setblocking(False)
-    print("~~\nServer set up\n~~")
+    print(f"\n- - -\nWaiting For Clients\n- - -\nHost:{HOST}\nPort:{PORT}\n- - -\n")
     sel.register(server_sock, selectors.EVENT_READ, get_packet)
     while True:
         events = sel.select()
