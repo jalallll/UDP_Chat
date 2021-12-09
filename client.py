@@ -69,9 +69,12 @@ def flip_sequence_number():
 
 def send_msg(msg):
     global HOST, PORT, PREV_PACKET, SEQUENCE_NUMBER
-
+    
+    # formatting of message string
+    msg = f"{USER_NAME}: {msg}"
     # Encode message
     msg_encoded = msg.encode()
+    # Size of encoded message
     size_msg_encoded = len(msg_encoded)
 
     # calculate checksum of 3 fields
@@ -121,10 +124,14 @@ def main():
     # Watch for ctrl+ c events
     def signal_handler(sig, frame):
         print('\nInterrupt received, shutting down ...')
-        message=f'DISCONNECT {USER_NAME} CHAT/1.0'
+        message=f'DISCONNECT CHAT/1.0'
         message.strip('\n')
-        #CLIENT_SOCK.send(message.encode())
-        CLIENT_SOCK.close()
+
+        # send DC message to server
+        send_msg(message)
+        sys.exit()
+        
+        
         
     
     # Initialize signal
@@ -163,7 +170,7 @@ def main():
             else:
                 
                 msg = sys.stdin.readline()
-                msg = f"{USER_NAME}: {msg}"
+                
                 send_msg(msg)
                 
 # Parse username, server hostname, server port from command line args
