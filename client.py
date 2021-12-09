@@ -126,14 +126,10 @@ def main():
         print('\nInterrupt received, shutting down ...')
         message=f'DISCONNECT CHAT/1.0'
         message.strip('\n')
-
         # send DC message to server
         send_msg(message)
         sys.exit()
         
-        
-        
-    
     # Initialize signal
     signal.signal(signal.SIGINT, signal_handler)
 
