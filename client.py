@@ -114,18 +114,23 @@ def send_msg(msg):
     #flip sequence number
 
 
+# Prevent client from using "server" as their username
+def check_user_name(USER_NAME):
+    if "server" in USER_NAME.lower():
+        er_str = "\n#############################################################\n######################### ERROR #############################\n#############################################################\n"
+        print(f"{er_str}The username you chose: ' {USER_NAME} '\n\nYour username can't be any derivative of the string 'Server'!!\n{er_str}")
+        sys.exit()
+
 def main():
     global SEQUENCE_NUMBER, CLIENT_SOCK, USER_NAME, STREAM_BUFFER_SIZE, MAX_STRING_SIZE, HOST, PORT
     
     # Parse username, host ip, port number from command
     USER_NAME, HOST, PORT = parser()
 
+    # Check to see if user name is valid
+    check_user_name(USER_NAME)
 
-    # Prevent client from using "server" as their username
-    if USER_NAME.upper()=="SERVER":
-        er_str = "\n#############################################################\n######################### ERROR #############################\n#############################################################\n"
-        print(f"{er_str}The username you chose: ' {USER_NAME} '\n\nYour username can't be any derivative of the string 'Server'!!\n{er_str}")
-        sys.exit()
+    
     
     CLIENT_SOCK.setblocking(False)
 
