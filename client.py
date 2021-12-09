@@ -37,6 +37,7 @@ PREV_SEQ = 0
 unpacker = struct.Struct(f'I I {MAX_STRING_SIZE}s 32s')
 packer = struct.Struct(f'I I {MAX_STRING_SIZE}s')
 
+
 #
 ###############################################################
 ########### Functions 
@@ -119,6 +120,13 @@ def main():
     # Parse username, host ip, port number from command
     USER_NAME, HOST, PORT = parser()
 
+
+    # Prevent client from using "server" as their username
+    if USER_NAME.upper()=="SERVER":
+        er_str = "\n#############################################################\n######################### ERROR #############################\n#############################################################\n"
+        print(f"{er_str}The username you chose: ' {USER_NAME} '\n\nYour username can't be any derivative of the string 'Server'!!\n{er_str}")
+        sys.exit()
+    
     CLIENT_SOCK.setblocking(False)
 
     # Watch for ctrl+ c events
@@ -128,6 +136,7 @@ def main():
         message.strip('\n')
         # send DC message to server
         send_msg(message)
+        # wait for ack before exit
         sys.exit()
         
     # Initialize signal
