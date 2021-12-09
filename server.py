@@ -56,6 +56,7 @@ def is_duplicate():
          return True
 
 def is_corrupt():
+    global RECV_SEQ, RECV_SIZE, RECV_DATA, RECV_CHECKSUM, RECV_TEXT, packer
     # Calculate and confirm checksum
     values = (RECV_SEQ,RECV_SIZE,RECV_DATA)
     packed_data = packer.pack(*values)
@@ -86,6 +87,7 @@ def get_packet(sock, mask):
     if is_corrupt() == False and is_duplicate()==False:
         print('Received and computed checksums match, so packet can be processed')
         print(f'Message text was:  {RECV_TEXT}')
+        print(f"\Initial Seq Num: {EXPECTED_SEQ}")
         # flip expected sequence number 
         flip_expected_seq()
         print(f"\nExpecting Seq Num: {EXPECTED_SEQ}")

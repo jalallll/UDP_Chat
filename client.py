@@ -7,7 +7,10 @@ import signal
 import errno
 import re
 import sys
+import argparse
+from urllib.parse import urlparse
 
+###############################################################
 UDP_IP = "localhost"
 UDP_PORT = 54321
 
@@ -17,13 +20,31 @@ SEQUENCE_NUMBER = 0
 
 USER_NAME = "Client"
 
-PREV_PACKET = 0
+PREV_SEQ = 0
 
 unpacker = struct.Struct(f'I I {MAX_STRING_SIZE}s 32s')
 packer = struct.Struct(f'I I {MAX_STRING_SIZE}s')
 
+###############################################################
+# Parse username, server hostname, server port from command line args
+def parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("user", help="user name for this user on the chat service")
+    parser.add_argument("server", help="Server URL: chat://host:port")
+    args = parser.parse_args()
+    try:
+        server_address = urlparse(args.server)
+        if ((server_address.scheme != 'chat') or (server_address.port == None) or (server_address.hostname == None)):
+            raise ValueError
+        HOST = server_address.hostname
+        PORT = server_address.port
+        USER = args.user
+        return (USER, HOST, PORT)
+    except ValueError:
+        print('Error:  Invalid server.  Enter a URL of the form: chat://host:port')
+        sys.exit()
 
-
+# Invert sequence number 
 def flip_sequence_number():
     global SEQUENCE_NUMBER
     if(SEQUENCE_NUMBER==0):
@@ -33,10 +54,11 @@ def flip_sequence_number():
 
 
 def main():
+    global SEQUENCE_NUMBER
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
     sock.bind(('', 0))
     sock.setblocking(False)
-    
+
     while 1:
         readers, writers, errors = select.select([sys.stdin, sock], [], [])
         for reader in readers:
@@ -67,6 +89,7 @@ def main():
                     print('Received and computed checksums do not match, so packet is corrupt and discarded')
             # Reading from standard input
             else:
+                
                 msg = sys.stdin.readline()
                 msg = f"{USER_NAME}: {msg}"
                 # make sure msg is less than 256 bits
@@ -87,6 +110,12 @@ def main():
                 # send msg to server
                 sock.sendto(UDP_packet, (UDP_IP, UDP_PORT))
                 PREV_PACKET = UDP_packet
+                print(f"\nMsg Sent: {msg}\nSequence Number: {SEQUENCE_NUMBER}")
+                
+                if(SEQUENCE_NUMBER==0):
+                    SEQUENCE_NUMBER=1
+                else:
+                    SEQUENCE_NUMBER=0
 
                 # set blocking to true (so program waits for response) and set a timeout for 1 second
 
