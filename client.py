@@ -9,8 +9,10 @@ import re
 import sys
 import argparse
 from urllib.parse import urlparse
-
-
+import select
+import time
+loop = True
+out = ""
 sel = selectors.DefaultSelector()
 
 ###############################################################
@@ -75,7 +77,9 @@ def parser():
 # Invert sequence number 
 def flip_sequence_number():
     global SEQUENCE_NUMBER
-    SEQUENCE_NUMBER = (SEQUENCE_NUMBER + 1)%2
+    if SEQUENCE_NUMBER==0:
+        SEQUENCE_NUMBER=1
+    else: SEQUENCE_NUMBER=0
 
 def get_sequence_number():
     global SEQUENCE_NUMBER
@@ -155,54 +159,51 @@ def construct_msg_packet(msg):
     packet_tuple = (sequence_num,size_msg_encoded,msg_encoded,ack,checksum)
     UDP_packet_structure = struct.Struct(f'I I {MAX_STRING_SIZE}s I 32s')
     UDP_packet = UDP_packet_structure.pack(*packet_tuple)
-    print(f"used seq{sequence_num}")
     return UDP_packet
 
+def recv_ack(sock):
+    global loop
+    try:
+        recv_pkt, adr = CLIENT_SOCK.recvfrom(STREAM_BUFFER_SIZE)
+        if is_ack(out, recv_pkt)==True:
+            print("got ack")
+            
+            return True
+        else:
+            print('\n###not ack')
+    except:
+        print("except")
+        
 
-def send_msg(sock,mask):
-    msg = sys.stdin.readline()
-    # set blocking to true
-    CLIENT_SOCK.setblocking(True)
-    loop = True
-    counter = 0
-    global HOST, PORT
+
+def send_msg(msg):
+    global out, loop, CLIENT_SOCK
+
+    global PORT, HOST
 
     # construct packet
     outgoing_packet = construct_msg_packet(msg)
-
-    # Temp vars
-    old_seq = get_sequence_number()
+    out = outgoing_packet
+    print("\n\n###############sending pack")
+    print(f"seq:{get_sequence_number()}")
     flip_sequence_number()
-    new_seq = get_sequence_number()
-    
+    print(f"flipped seq:{get_sequence_number()}")
+    CLIENT_SOCK.sendto(outgoing_packet, (HOST, PORT))
+    print(f"sent pack msg:{msg}")
+    while True:
+        if (recv_ack(CLIENT_SOCK)==True):
+            print("inherere########")
+            break
+        else:
+            print("\n---$$$in else")
+            CLIENT_SOCK.sendto(outgoing_packet, (HOST, PORT))
+            print(f"sent pack msg:{msg}")
 
-    while loop == True:
-        counter = counter + 1
-        # send packet to server
-        CLIENT_SOCK.sendto(outgoing_packet, (HOST, PORT))
-
-        print(f"\n - - send_msg() - - -Iteration {counter}")
-        print(f"{msg}")
-        print(f"Sent SEQ-NUM:{old_seq}")
-        print(f"New SEQ-NUM:{new_seq}")
-        print(" - - waiting... - - -\n")
-
-        # set timeout
-        CLIENT_SOCK.settimeout(4)
-
-        print("timeout done..")
-
-        # wait for ack0 or 1 - depends on sequence number
-        recv_pkt, adr = CLIENT_SOCK.recvfrom(STREAM_BUFFER_SIZE)
-        host = adr[0]
-        port = adr[1]
         
-        if is_ack(outgoing_packet, recv_pkt)==True:
-            loop = False
+            
 
-    CLIENT_SOCK.setblocking(False)
-    CLIENT_SOCK.settimeout(None)
-
+        
+    
 
 
 
@@ -224,7 +225,7 @@ def main():
         message=f'DISCONNECT CHAT/1.0'
         message.strip('\n')
         # send DC message to server
-        send_msg(message)
+        #send_msg(message)
         # wait for ack before exit
         sys.exit()
         
@@ -232,14 +233,17 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
 
+    while 1:
+        r,w,e = select.select([CLIENT_SOCK, sys.stdin], [],[],10)
 
-    #sel.register(CLIENT_SOCK, selectors.EVENT_READ, handle_message_from_server)
-    sel.register(sys.stdin, selectors.EVENT_READ, send_msg)
-    while True:
-        events = sel.select()
-        for key, mask in events:
-            callback = key.data
-            callback(key.fileobj, mask)
+        for reader in r:
+            if reader == CLIENT_SOCK:
+                print('in reader')
+                recv_ack(CLIENT_SOCK)
+            if reader == sys.stdin:
+                ("in input std")
+                msg = sys.stdin.readline()
+                send_msg(msg)
 
 # Parse username, server hostname, server port from command line args
 def parser():

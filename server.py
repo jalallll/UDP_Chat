@@ -75,6 +75,7 @@ def is_duplicate(packet):
          return False
     else:
         print(f"Expected{get_expected_seq()} but got{recieved_num}")
+        print("\n duplicate")
         return True
 
 # return true if corrupt packet
@@ -150,7 +151,8 @@ def get_packet(sock, mask):
         ack_msg = make_ack(fields[0])
         server_sock.sendto(ack_msg, addr)
         increment_expected_seq()
-        print(f"Next will expect: {get_expected_seq()}")    
+        print(f"Next will expect: {get_expected_seq()}")   
+        print("Sending ack") 
     else:
         print("Bad msg")
         num = get_expected_seq()
@@ -164,7 +166,7 @@ def get_packet(sock, mask):
 def main():
     global server_sock
 
-    server_sock.bind(('', 0))
+    server_sock.bind(('localhost', 55555))
     HOST = server_sock.getsockname()[0]
     PORT = server_sock.getsockname()[1]
     server_sock.setblocking(False)
