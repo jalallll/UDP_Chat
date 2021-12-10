@@ -9,98 +9,105 @@ import re
 import sys
 
 #todo
-# if server receives non corrupt packet & correct seq num -> send ack to client and set timer 
-# if server receives corrupt packet or wrong seq num -> send nak to client 
+# if server receives non corrupt packet & correct expected_seq num -> send ack to client and set timer 
+# if server receives corrupt packet or wrong expected_seq num -> send nak to client 
 ## sender must retransmit corrupt packet upon receiving nak from server
 
 
-SEQ_OUT = 0
 server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
 
 # Buffer size
 STREAM_BUFFER_SIZE =1024
 MAX_STRING_SIZE = 256
 
-EXPECTED_SEQ = 0
+expected_seq = 0
+server_seq = 0
 
-RECV_SEQ = 0
-RECV_SIZE = 0
-RECV_DATA = 0
-RECV_CHECKSUM = 0
-RECV_TEXT = 0
+
 
 sel = selectors.DefaultSelector()
 
 
-client_list = []
+
+
 '''
-[0] = username,
-[1] = addr
-[2] = next_num
-[3] = follow list []
+Packet structure
+[0] = sequence number (I) -> Either 0 or 1
+[1] = size (I)
+[2] = data (256 S)
+[3] = ACK (I) -> 0 or 1 corresponding to packet # or 3 if not an ACK
+[4] = checksum
 '''
-
-client_count = 0
-
-
-unpacker = struct.Struct(f'I I {MAX_STRING_SIZE}s 32s')
-packer = struct.Struct(f'I I {MAX_STRING_SIZE}s')
+unpacker = struct.Struct(f'I I {MAX_STRING_SIZE}s I 32s')
+packer = struct.Struct(f'I I {MAX_STRING_SIZE}s I')
 
 
-# todo 
 
+'''
+Functions
+'''
+# unpack 5 field packet and return encoded data
+def unpack_packet(packed_packet):
+    UDP_packet_structure = struct.Struct(f'I I {MAX_STRING_SIZE}s I 32s')
+    packet = UDP_packet_structure.unpack(packed_packet)
+    # return values in packet
+    sequence_number = packet[0]
+    size = packet[1]
+    encoded_data = packet[2] # need to decode it
+    ACK = packet[3]
+    checksum = packet[4]
+    return (sequence_number, size, encoded_data, ACK, checksum)
 
-## Functions ##
+# return decoded text
+def unpack_packet_decoded_text(packed_packet):
+    sequence_number, size, encoded_data, ACK, checksum = unpack_packet(packed_packet)
+    data = encoded_data
+    decoded_text = data[:size].decode()
+    return (sequence_number, size, decoded_text, ACK, checksum)
 
-def extract_packet_fields(UDP_packet):
-    global RECV_SEQ, RECV_SIZE, RECV_DATA, RECV_CHECKSUM, RECV_TEXT
-    # Extract fields from packet
-    RECV_SEQ = UDP_packet[0]
-    RECV_SIZE = UDP_packet[1]
-    RECV_DATA = UDP_packet[2]
-    RECV_CHECKSUM = UDP_packet[3]
-    # extract text from RECV_DATA
-    RECV_TEXT = RECV_DATA[:RECV_SIZE].decode()
 
 # Check if packet recieved is duplicate by comparing its sequence number to the expected sequence number
-def is_duplicate(adr):
-    global RECV_SEQ, client_list
-    client = get_client(adr)
-    expected_num = client[2]
-    if(expected_num==RECV_SEQ):
+def is_duplicate(packet):
+    fields = unpack_packet(packet)
+    recieved_num = fields[0]
+    
+    if(get_expected_seq()==recieved_num):
          return False
     else:
-         return True
-# Check if packet recieved is corrupt by comparing its checksum against the computed checksum
-def is_corrupt():
-    global RECV_SEQ, RECV_SIZE, RECV_DATA, RECV_CHECKSUM, RECV_TEXT, packer
-    # Calculate and confirm checksum
-    values = (RECV_SEQ,RECV_SIZE,RECV_DATA)
-    packed_data = packer.pack(*values)
-    computed_checksum =  bytes(hashlib.md5(packed_data).hexdigest(), encoding="UTF-8")
-
-    if RECV_CHECKSUM == computed_checksum:
-        return False
-    else:
+        print(f"Expected{get_expected_seq()} but got{recieved_num}")
         return True
 
-# Invert the sequence number between 0 and 1        
-def flip_sequence_number():
-    global EXPECTED_SEQ
-    num = EXPECTED_SEQ
-    EXPECTED_SEQ = get_opposite(num)
+# return true if corrupt packet
+def is_corrupt(packed_packet):
+    # get 5 fields, last field is checksum
+    fields = unpack_packet(packed_packet)
+    recv_checksum = fields[4]
+    # new tuple excluding checksum field
+    # exclude checksum in computation
+    values = (fields[0], fields[1], fields[2], fields[3])
+    packer = struct.Struct(f'I I {MAX_STRING_SIZE}s I') #pack data
+    packed_data = packer.pack(*values)
+    computed_checksum =  bytes(hashlib.md5(packed_data).hexdigest(), encoding="UTF-8")
+    # compare recieved and computed checksum
+    if recv_checksum != computed_checksum:
+        return True
+    else:
+        return False
 
-def flip_seq(adr):
-    global client_list
 
-    # convert tuple to list, edit, convert list back to tuple
-    client = get_client(adr) #tuple
-    list_client = list(client) #convert tuple to list
-    list_client[2] = get_opposite(client[2])
-    client_list.remove(client) # remove tuple
-    client = tuple(list_client)
-    client_list.append(client)
+def increment_expected_seq():
+    global expected_seq
+    expected_seq = expected_seq+1
 
+def get_expected_seq():
+    return expected_seq%2
+
+def increment_server_seq():
+    global server_seq
+    server_seq = server_seq+1
+
+def get_server_seq():
+    return server_seq%2
 
 def get_opposite(num):
     if num ==0:
@@ -108,136 +115,55 @@ def get_opposite(num):
     else:
          return 0
 
-def accept_client(user_name, addr, seq_num):
-    send_ack(addr, seq_num)
-    global client_list
-    client_list.append((user_name,addr, seq_num, ['@all', f"@{user_name}"]))
-    client = get_client(addr)
-    print(f"Welcome to the server {user_name}")
-    print("\n - - - - - -")
-    print(f'{RECV_TEXT}')
-    print(f"\nSeq Num We got: {client[2]}")
-    # flip expected sequence number 
-    flip_seq(client[1])
-    print(f"\nNext Expecting Seq Num: {get_client(addr)[2]}")
-    print("\n - - - - - -\n")
+def make_ack(sequence):
+    ack = sequence
+    # formatting of message string
+    msg = "Server:"
+    # Encode message
+    msg_encoded = msg.encode()
+    # Size of encoded message
+    size_msg_encoded = len(msg_encoded)
+
+    # calculate checksum of 4 fields
+    packet_tuple = (get_server_seq(),size_msg_encoded,msg_encoded, ack)
+    packet_structure = struct.Struct(f'I I {MAX_STRING_SIZE}s I')
+    packed_data = packet_structure.pack(*packet_tuple)
+    checksum =  bytes(hashlib.md5(packed_data).hexdigest(), encoding="UTF-8")
+
+    # Construct packet with checksum field
+    packet_tuple = (get_server_seq(),size_msg_encoded,msg_encoded,ack,checksum)
+    UDP_packet_structure = struct.Struct(f'I I {MAX_STRING_SIZE}s I 32s')
+    UDP_packet = UDP_packet_structure.pack(*packet_tuple)
+    
+    return UDP_packet
+
 
 def get_packet(sock, mask):
-    global client_list
+    global client_list, server_seq
+    server_sock.setblocking(True)
     # Receive the packet and address of client
     received_packet, addr = sock.recvfrom(STREAM_BUFFER_SIZE)
-       
-    print(f"\nConnection from:\n{addr[0]}\n{addr[1]}")
-
-    # Get client obj
-    client = get_client(addr)
-
-    # Unpack and Extract packet fields
-    UDP_packet = unpacker.unpack(received_packet)
-    extract_packet_fields(UDP_packet)
-    # extract username 
-    msg = RECV_TEXT
-    msg_split = msg.split(" ")
-    user_name = msg_split[0].strip(":")
-        
-    # Packet not corrupt
-    if is_corrupt() == False:
-        # Client's first connection
-        if client==None:
-            accept_client(user_name, addr,RECV_SEQ) # Accept client and flip sequence number 
-        # Returning client
-        else:
-            expected_seq_num = client[2]
-            follows = client[3]
-            # Duplicate Packet    
-            if is_duplicate(addr) == True:
-                # Send NAK (sending ack for last good packet)
-                send_ack(addr, RECV_SEQ)
-                print("\n # # # # # #")
-                print("\nDuplicate Packet!!\n")
-                print(f"\nExpected Sequence Number: {expected_seq_num}\nSequence Number we got: {RECV_SEQ}")
-                print("\n # # # # # #\n")
-            # Respond to commands
-            else:
-                # send ACK to client (positive acknowledgement)
-                send_ack(addr, RECV_SEQ)
-                # Responding to a DC Request From Client     
-                if msg_split[1]=="DISCONNECT" and msg_split[2]=="CHAT/1.0": 
-                    farewell = f"Bye {user_name}!"
-                    print(f"{farewell} : {client[1]}")
-                    # remove from client_list
-                    client_list.remove(client)
-                    # Check if client successfully removed from list
-                    if get_addr_by_username(user_name)==None:
-                        print(f"{user_name} Successfully removed")
-
-                # Normal Messaging  Print Message #
-                else:
-                    print("\n - - - - - -")
-                    print(f'{RECV_TEXT}')
-                    print(f"\nSeq Num We got: {client[2]}")
-                    # flip expected sequence number 
-                    flip_seq(client[1])
-                    print(f"\nNext Expecting Seq Num: {get_client(addr)[2]}")
-                    print("\n - - - - - -\n")
-                    
-    # Handling corrupt packet
+    # if packet is good then send an ack
+    if is_corrupt(received_packet)==False and is_duplicate(received_packet)==False:
+        fields = unpack_packet_decoded_text(received_packet)
+        print(f"{fields[2]}")
+        ack_msg = make_ack(fields[0])
+        server_sock.sendto(ack_msg, addr)
+        increment_expected_seq()
+        print(f"Next will expect: {get_expected_seq()}")    
     else:
-        print("\n # # # # # #")
-        print('\nChecksums DO NOT MATCH!\n')
-        print("\n # # # # # #\n")
-
-        # send NAK to client (negative acknowledgement)
-        
-
-
-# Return entire client tuple corresponding to username
-def get_client(adr):
-    for client in client_list:
-        if client[1] == adr:
-            return client
-    return None
-
-
-# Get client socket given the username
-def get_addr_by_username(user_name):
-    for client in client_list:
-        if client[0] == user_name:
-            return client[1]
-    return None
-
-def send_ack(client_adr, sequenceNum):
-    #client_adr = get_addr_by_username(user_name)
-
-    if client_adr != None:
-        # Extract client host and port info
-        client_host = client_adr[0]
-        client_port = client_adr[1]
-        msg = "Server:ACK"
-        # Encode message
-        msg_encoded = msg.encode()
-        # Size of encoded message
-        size_msg_encoded = len(msg_encoded)
-
-        # calculate checksum of 3 fields
-        packet_tuple = (sequenceNum,size_msg_encoded,msg_encoded)
-        packet_structure = struct.Struct(f'I I {MAX_STRING_SIZE}s')
-        packed_data = packet_structure.pack(*packet_tuple)
-        checksum =  bytes(hashlib.md5(packed_data).hexdigest(), encoding="UTF-8")
-
-        # Construct packet with checksum field
-        packet_tuple = (sequenceNum,size_msg_encoded,msg_encoded,checksum)
-        UDP_packet_structure = struct.Struct(f'I I {MAX_STRING_SIZE}s 32s')
-        UDP_packet = UDP_packet_structure.pack(*packet_tuple)
-        
-        # send msg to client
-        server_sock.sendto(UDP_packet, (client_host, client_port))
-    
+        print("Bad msg")
+        num = get_expected_seq()
+        num1 = get_opposite(num)
+        ack_msg = make_ack(num1)
+        server_sock.sendto(ack_msg, addr)
+    increment_server_seq()
+    server_sock.setblocking(False)
+  
 
 def main():
     global server_sock
-    
-    
+
     server_sock.bind(('', 0))
     HOST = server_sock.getsockname()[0]
     PORT = server_sock.getsockname()[1]
